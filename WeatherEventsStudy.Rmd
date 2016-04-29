@@ -1,0 +1,215 @@
+---
+title: "Severe weather impact in USA (1950-2011)"
+author: "Agustin González-Quel"
+date: "28 de abril de 2016"
+output: html_document
+---
+
+# Impact of Severe Weather in USA
+
+## The problem to analyse
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern.
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+The data used for this research in the form of a comma-separated-value file compressed via the bzip2 algorithm (47Mb file)
+
+[Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2)
+
+Additional information required for data processing can be found at the [Storm Events](http://www.ncdc.noaa.gov/stormevents/) page at [NOAA website](http://www.ncdc.noaa.gov/)
+
+### Questions to be answered
+Which types of events are most harmful with respect to population health?
+Which types of events have the greatest economic consequences?
+
+## Analysis carried out
+
+The analysis carried out is included herebelow. The process starts by loading the data into de R working environment. Afterwards some data cleaning is required to have datasets that can be managed in a more efficient way. Finally, the analysis itself is presented. All the steps carried out are described in detail so the process can be easily reproduced using similar datasets.
+
+### Preliminary steps
+
+For this analysis a number of libraries are required. They are loaded initially in the working environment
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+library(reshape2)
+```
+
+### Data acquisition
+
+The data for this analysis can download the file from [this link] (https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", "mystormdata.csv.bz2)
+
+Loading Data
+
+
+```{r}
+download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", "mystormdata.csv.bz2")
+
+myStormData <- read.csv(bzfile("mystormdata.csv.bz2"))
+dim(myStormData)
+```
+
+The obtained data frame has 37 columns  and 902297 rows. Names of the columns are presented for the researcher to select the data that will be used by further subsetting the data frame 
+
+```{r}
+names(myStormData)
+```
+
+### Data Processing
+
+From the 37 variables, a number of them are selected for this research:
+
+* BGN_DATE: Date.
+* EVTYPE: Type of weather event.
+* FATALITIES: Number of fatalities.
+* INJURIES: Number of injuries.
+* PROPDMG: Figure of the property damage (E.g. 34)
+* PROPDMGEXP: Expontential notation that complement the previous (e.g. K This means 34 K$)
+* CROPDMG: Figure fpr the crop damage (E.g. 13).
+* CROPDMGEXP: Expontential notation that complement the previous (e.g. M This means 13.000.000 $)
+
+```{r}
+mySubsetStormData <- myStormData[c("BGN_DATE","EVTYPE","FATALITIES","INJURIES","PROPDMG","PROPDMGEXP","CROPDMG","CROPDMGEXP")]
+```
+
+At this point we have reduced the number of variables to those really required for our analysis.
+
+An additional step is to convert PROPDMGEXP and CROPDMGEXP from exponential notation to numbers. For that purpose a couple of functions are created and then called
+
+```{r}
+propExp2number <- function(df) {
+    library(plyr)
+    df$PROPex <- df$PROPDMGEXP
+    df$PROPex <- revalue(df$PROPex, c("K"="3","M"="6","m"="6","B"="9","+"="0","h"="2","H"="2","-"="0","?"="0"))
+    df$PROPex[df$PROPex==""] <- "0"
+    df$PROPex<-as.numeric(df$PROPex)
+    df$TOTALPROPDMG <- df$PROPDMG * (10^df$PROPex)
+    df
+}
+
+cropExp2number <- function(df) {
+    library(plyr)
+    df$CROPex <- df$CROPDMGEXP
+    df$CROPex <- revalue(df$CROPex, c("K"="3","M"="6","m"="6","B"="9","+"="0","h"="2","H"="2","-"="0","?"="0"))
+    df$CROPex[df$CROPex==""] <- "0"
+    df$CROPex<-as.numeric(df$CROPex)
+    df$TOTALCROPDMG <- df$CROPDMG * (10^df$CROPex)
+    df
+}
+
+mySubsetStormData <- propExp2number(mySubsetStormData)
+mySubsetStormData <- cropExp2number(mySubsetStormData)
+```
+
+Again, we restrict the dataframe to the variables that are relevant for our research. As we have the total figure for damages we can remove the two initial variables.
+
+```{r}
+mySubsetStormData <- mySubsetStormData[c("BGN_DATE","EVTYPE","FATALITIES","INJURIES","TOTALPROPDMG","TOTALCROPDMG")]
+```
+
+A look to the subsetted dataframe
+```{r}
+dim(mySubsetStormData)
+
+summary(mySubsetStormData)
+
+mySubsetStormData[800000:800010,]
+```
+
+At this point, the dataframe mySubsetStormData is prepared to answer the questions of the study
+
+## Results
+
+The results of the study are presented herebelow
+
+### Which events are more harmful with respect to population health
+
+Both death and injured people are included in this group
+
+The strategy followed is to agregate data by fatalities and injuries
+
+```{r}
+totalFatalities <- aggregate(FATALITIES~EVTYPE, data = mySubsetStormData, "sum")
+totalInjuries <- aggregate(INJURIES~EVTYPE, data = mySubsetStormData, "sum")
+```
+
+Now both dataframes are merged
+
+```{r}
+totalDamagedPeople <- merge(totalFatalities, totalInjuries, by = 'EVTYPE')
+```
+
+And we take the 10 events type that account more harmful events (fatalities and injuries) and present the results
+
+```{r}
+totalDamagedPeople <- totalDamagedPeople[order(-(totalDamagedPeople$FATALITIES+totalDamagedPeople$INJURIES)),]
+totalDamagedPeople <- totalDamagedPeople[1:10,]
+totalDamagedPeople
+```
+
+A graphical representation for results
+
+Graphical representation of data as they are would lead to a hard to read chart, as the difference among numbers is very high. Therefore, we propose a different representation using a logarithmic scale
+
+```{r}
+library(reshape)
+damagedPeople <- melt(totalDamagedPeople, id.var = 'EVTYPE')
+ggplot(damagedPeople, aes(EVTYPE, y = log(value+1), fill = variable)) + geom_bar(stat="identity") + 
+       geom_bar(stat="identity", position="stack") +
+       geom_text(aes(label=value), position="stack", hjust=2) +
+       scale_y_continuous(name="Number of Fatalities & Injuries")+
+       coord_flip()
+```
+
+
+### Events with greatest economic consequences
+
+The available information is used now to research on economical consequences
+
+First of all, Properties:
+
+```{r}
+damagedProps <- aggregate(TOTALPROPDMG~EVTYPE, data = mySubsetStormData, "sum")
+damagedProps <- damagedProps[order(-(damagedProps$TOTALPROPDMG)),]
+damagedProps <- damagedProps[1:10,]
+damagedProps
+```
+
+Then, Crops:
+
+```{r}
+damagedCrops <- aggregate(TOTALCROPDMG~EVTYPE, data = mySubsetStormData, "sum")
+damagedCrops <- damagedCrops[order(-(damagedCrops$TOTALCROPDMG)),]
+damagedCrops <- damagedCrops[1:10,]
+damagedCrops
+```
+
+Graphically, both dataframes are represented
+
+```{r}
+plotprop <- qplot(EVTYPE, data = damagedProps, weight = TOTALPROPDMG, geom = "bar", fill = I("blue")) + 
+    scale_y_continuous("Prop. Damage") + 
+    theme(axis.text.x = element_text(angle = 45, 
+    hjust = 1)) + xlab("Weather Type") + 
+    ggtitle("The top 10 weather events\n by property damage")
+
+plotcrop <- qplot(EVTYPE, data = damagedCrops, weight = TOTALCROPDMG, geom = "bar", fill = I("red")) + 
+    scale_y_continuous("Prop. Crop") + 
+    theme(axis.text.x = element_text(angle = 45, 
+    hjust = 1)) + xlab("Weather Type") + 
+    ggtitle("The top 10 weather events\n by crop damage")
+grid.arrange(plotprop, plotcrop, ncol = 2)
+```
+
+### Conclusions
+
+Before conclusions, a comment. Different plots are presented in personal damages and economical impact so any person willing to reproduce the research can select which one fits best to their needs and select one of them accordingly.
+
+Having said that, the conclusions of our study are:
+
+* Tornado is the event that leads to more personal damages
+* flood is the event that create more impact in Properties and Hail in Crops.
+
+Now, it is your turn.
+
